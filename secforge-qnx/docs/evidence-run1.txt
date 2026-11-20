@@ -1,0 +1,76 @@
+EVIDENCE RUN 1 - SecForge-QNX
+Raw terminal output copied from the sessions. Dates: 11/20/2026
+
+ENVIRONMENT
+- Host: Windows 10 (build 19045), x86_64
+- QNX SDP 8.0 installed at C:\Users\Admin\qnx800 (installed via QNX Software Center)
+- QEMU 11.1.0 for Windows (qemu-w64-setup-20260811)
+- Target: QNX 8.0 x86_64 in QEMU, 2 CPUs, 1G RAM
+- Images built with mkqnximage (--type=qemu), run with run.bat
+
+POLICY FILES (in evidence/policies/)
+- policy-open-baseline.txt: 487 lines (10,098 bytes)
+- policy-run2.txt: 73 lines (2,287 bytes), generated updates from the open image
+- policy-merged.txt: baseline + run2 concatenated; compiled by secpolcompile with no reported errors
+
+----------------------------------------------------------------------
+A. SECURE IMAGE (--secpol=secure --policy=policy-merged.txt), SSH shell (type user_root_t)
+Boot log shows "Loading security policy"; no "Starting policy generator" line.
+
+# uname -a
+QNX noname 8.0.0 2026/10/30-09:10:05EDT x86pc x86_64
+# echo test > /data/probe.txt ; cat /data/probe.txt
+test
+# on -T random_t sleep 1 ; echo exit=$?
+on: Operation not permitted (sleep)
+exit=1
+# /proc/boot/secpolpush ; echo exit=$?
+secpolpush: failed to push policy: Operation not permitted
+secpolpush: failed to push policy
+exit=1
+
+Also in the secure image over SSH:
+- pidin -f an_ shows processes under security types (sshd_t, io_sock_t__run, ...)
+- secpolgenerate is not running; ls /dev/secpolgenerate: No such file or directory
+- secpol -v: SECPOL_BLOB_TYPE_MAP, PMR, PMA_RULES, DERIVE: all OK
+
+----------------------------------------------------------------------
+B. SECURE IMAGE, serial console in the QEMU window (type console_t)
+
+# uname -a
+QNX noname 8.0.0 2026/10/30-09:10:05EDT x86pc x86_64
+# ls /
+bin  boot  data  dev  etc  proc  system  tmp  usr  var
+# proc/boot/secpolpush ; echo exit=$?
+secpolpush: failed to push policy: File exists
+secpolpush: failed to push policy
+exit=1
+# on -T random_t sleep 1 ; echo exit=$?
+on: Operation not permitted (sleep)
+exit=1
+
+----------------------------------------------------------------------
+C. OPEN IMAGE (--secpol=open), serial console in the QEMU window (type console_t)
+Boot log shows "Starting policy generator".
+
+# /proc/boot/secpolpush ; echo exit=$?
+exit=0
+# on -T random_t sleep 1 ; echo exit=$?
+exit=0
+
+----------------------------------------------------------------------
+WHAT THIS SHOWS
+- Same two commands at the serial console: allowed in the open image (exit=0),
+  denied or failing in the secure image (exit=1). The security policy is the
+  difference between the two images.
+- Legitimate operations (uname, ls, writing and reading a file in /data) work in
+  the secure image.
+
+WHAT THIS DOES NOT SHOW YET
+- The SSH-shell (user_root_t) commands were not run on the open image, so there is
+  no open-versus-secure comparison for that type.
+- The "File exists" error from secpolpush at the console (vs "Operation not
+  permitted" over SSH) suggests the console type has an ability the SSH type
+  lacks (the generated update granted mac_policy to console_t). HYPOTHESIS ONLY,
+  not yet confirmed by removing the rule and re-testing.
+- Build time and boot time are not yet measured.
