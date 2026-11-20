@@ -1,0 +1,10 @@
+EVIDENCE RUN 2 - first manual minimization (2026-11-20)
+Change: removed the single line "mac_policy" (line 521, in the generated console_t block) from policy-merged.txt -> policy-min1.txt
+Build: mkqnximage --type=qemu --cpu=2 --ram=1G --secpol=secure --policy=policy-min1.txt --build
+Build time: 70 s (%TIME% 9:42:52.95 -> 9:44:02.96, includes "Compiling policy")
+Boot: reached "Startup complete"; pidin -f an_ shows the same service types as the full-policy secure image.
+Serial console (console_t):
+  /proc/boot/secpolpush ; echo exit=$?
+  before removal: secpolpush: failed to push policy: File exists   (exit=1)
+  after removal:  secpolpush: failed to push policy: Operation not permitted   (exit=1)
+Not yet shown: SSH legitimate workload on this image (see run-2b), boot time.
