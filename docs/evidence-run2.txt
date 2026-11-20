@@ -8,3 +8,4 @@ Serial console (console_t):
   before removal: secpolpush: failed to push policy: File exists   (exit=1)
   after removal:  secpolpush: failed to push policy: Operation not permitted   (exit=1)
 Not yet shown: SSH legitimate workload on this image (see run-2b), boot time.
+ 
