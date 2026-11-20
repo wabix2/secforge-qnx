@@ -1,0 +1,73 @@
+# This represents policy updates for policy id dc9c713a.  It contains the rules
+# representing the result of actions that would have failed with the existing
+# policy.
+
+# There have been one or more uses of secpol_resmgr_attach() that can have
+# permissions set for them in the policy. See the mount_point entries at
+# the end.
+
+ability iofunc/chown allow { root };
+ability iofunc/read allow { root };
+ability iofunc/exec allow { };
+ability iofunc/read=77;
+ability iofunc/dup=78 allow { root };
+ability iofunc/exec=79;
+ability vfs/mount-blk=80 allow { root };
+ability vfs/pregrow=81 allow { root };
+ability vfs/relearn=82 allow { root };
+ability vfs/stats-clear=83 allow { root };
+ability vfs/fs-control=84 allow { root };
+ability network/privport=85 allow { root };
+ability network/rawsocket=86 allow { root };
+ability network/reuseport=87 allow { root };
+ability network/ipsec=88 allow { root };
+ability network/admin=89 allow { root };
+ability network/jailroot=90 allow { root nonroot };
+
+# === Rules for type console_t ============
+allow console_t self:ability {
+    spawn
+    fork
+    able_create
+    xprocess_query:20-22,24-25,29-30,33-34,37-38,43-44,47-48
+    channel_connect:devb_t,random_t
+    mac_policy
+};
+
+# === Rules for type devc_t ============
+allow devc_t self:ability {
+    nonroot
+    session
+};
+
+# === Rules for type devc_t__run ============
+allow devc_t__run self:ability {
+    nonroot
+    session
+};
+
+# === Mount point permission rules ============
+# These represent uses of secpol_resmgr_attach(). By using mount_point
+# rules you can set the permissions used for these mount points.
+# mount_point ... /dev/console;
+# mount_point ... /dev/pci/server_id_1;
+# mount_point ... /dev/ser1;
+# mount_point ... /dev/ser2;
+# mount_point ... /dev/fsmgr;
+# mount_point ... /dev/fsnotify;
+# mount_point ... /dev/random;
+# mount_point ... /dev/socket/1;
+# mount_point ... /dev/socket/2;
+# mount_point ... /dev/socket/28;
+# mount_point ... /dev/socket/17;
+# mount_point ... /dev/socket/38;
+# mount_point ... /dev/socket/27;
+# mount_point ... /dev/tun;
+# mount_point ... /dev/tap;
+# mount_point ... /dev/vmnet;
+# mount_point ... /;
+# mount_point ... /dev/io-sock/;
+# mount_point ... /dev/bpf;
+# mount_point ... /dev/netmap;
+# mount_point ... /dev/pfil;
+# mount_point ... /dev/pf;
