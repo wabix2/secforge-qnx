@@ -4,7 +4,7 @@ Host tool that takes a `secpolgenerate`-produced security policy for a QNX OS 8.
 image, removes every rule the workload does not need (delta debugging), and proves
 a planted "attacker" process is blocked under the minimized policy.
 
-Status: day 0 scaffold. Nothing here has been run on QNX yet.
+Status: QNX 8.0 open-mode and secure-mode images build and boot in QEMU on Windows; a generated policy compiles and is enforced (see docs/evidence-run1.txt). Policy minimizer in progress
 
 Target: QNX SDP 8.0 (QNX Everywhere), QEMU x86_64, qcc toolchain.
 Category: Developer Tooling & Host Tools.
