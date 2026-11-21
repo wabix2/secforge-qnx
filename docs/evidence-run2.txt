@@ -1,11 +1,50 @@
 EVIDENCE RUN 2 - first manual minimization (2026-11-20)
-Change: removed the single line "mac_policy" (line 521, in the generated console_t block) from policy-merged.txt -> policy-min1.txt
-Build: mkqnximage --type=qemu --cpu=2 --ram=1G --secpol=secure --policy=policy-min1.txt --build
-Build time: 70 s (%TIME% 9:42:52.95 -> 9:44:02.96, includes "Compiling policy")
-Boot: reached "Startup complete"; pidin -f an_ shows the same service types as the full-policy secure image.
-Serial console (console_t):
-  /proc/boot/secpolpush ; echo exit=$?
-  before removal: secpolpush: failed to push policy: File exists   (exit=1)
-  after removal:  secpolpush: failed to push policy: Operation not permitted   (exit=1)
-Not yet shown: SSH legitimate workload on this image (see run-2b), boot time.
- 
+
+Change
+- Removed the single line "mac_policy" (line 521, in the generated console_t block)
+  from policy-merged.txt, producing policy-min1.txt (one line shorter).
+- Command used (PowerShell):
+  (Get-Content policy-merged.txt) | Where-Object { $_.Trim() -ne 'mac_policy' } | Set-Content policy-min1.txt
+
+Build
+- mkqnximage --type=qemu --cpu=2 --ram=1G --secpol=secure --policy=C:/qnxvm-secpol/policy-min1.txt
+  --ssh-ident=C:/Users/Admin/.ssh/id_ed25519.pub --build
+- Output included "Compiling policy"; build succeeded.
+- Build time: 70 s (%TIME% 9:42:52.95 -> 9:44:02.96).
+
+Boot
+- Reached "Startup complete" (banner: Process count:22).
+- pidin -f an_ shows the same service types as the full-policy secure image
+  (slogger_t__run, pci_server_t, devc_t__run, console_t, fsevmgr_t__run, devb_t__run,
+  random_t__run, pipe_t__run, devc_pty_t__run, dumper_t__run, io_sock_t__run,
+  dhcpcd_t, sshd_t, qconn_t, mqueue_t__run, io_usb_t, user_root_t for the SSH session).
+- Boot time (run.bat -> Startup complete): not measured yet.
+
+Serial console (type console_t), /proc/boot/secpolpush ; echo exit=$?
+- Full secure policy:        secpolpush: failed to push policy: File exists   (exit=1)
+- After removing mac_policy: secpolpush: failed to push policy: Operation not permitted   (exit=1)
+
+SSH shell (type user_root_t) on the reduced image
+# uname -a
+QNX noname 8.0.0 2026/10/30-09:10:05EDT x86pc x86_64
+# echo test > /data/probe2.txt
+# cat /data/probe2.txt
+test
+# ls /
+bin  boot  data  dev  etc  proc  system  tmp  usr  var
+# on -T random_t sleep 1 ; echo exit=$?
+on: Operation not permitted (sleep)
+exit=1
+# /proc/boot/secpolpush ; echo exit=$?
+secpolpush: failed to push policy: Operation not permitted
+secpolpush: failed to push policy
+exit=1
+
+What this shows
+- One permission was removed, the image still booted, services and the legitimate
+  checks above still worked, and the console's secpolpush now fails with a permission
+  error instead of getting past the check.
+
+Limits
+- Only one removal, done by hand. The legitimate workload is small (uname, file
+  write/read, ls). Boot time not measured. The console's other abilities are unchanged.
