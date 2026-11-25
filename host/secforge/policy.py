@@ -30,6 +30,7 @@ class Atom:
     type_name: str       # e.g. console_t
     ability: str         # e.g. channel_connect
     arg: Optional[str]   # e.g. devb_t, or None for a bare ability
+    canon: int           # index of the first atom with the same (type, ability, arg)
 
     def label(self) -> str:
         tail = f":{self.arg}" if self.arg is not None else ""
@@ -49,18 +50,30 @@ class Policy:
         self.text = text
         self.atoms: List[Atom] = []
         self._blocks: List[_Block] = []
+        seen: Dict[tuple, int] = {}
         for m in _BLOCK_RE.finditer(text):
             block_no = len(self._blocks)
             idxs: List[int] = []
             for ability, arg in _tokens(m.group("body")):
-                atom = Atom(len(self.atoms), block_no, m.group("type"), ability, arg)
+                key = (m.group("type"), ability, arg)
+                canon = seen.setdefault(key, len(self.atoms))
+                atom = Atom(len(self.atoms), block_no, m.group("type"), ability, arg, canon)
                 self.atoms.append(atom)
                 idxs.append(atom.index)
             self._blocks.append(_Block(m.start(), m.end(), m.group("type"), idxs))
 
+    @property
+    def unique_indexes(self) -> List[int]:
+        """Indexes of atoms to minimize over: one per distinct (type, ability, arg).
+        A permission that appears twice (for example in the baseline and in the
+        generated update) is one unit: keeping it keeps every copy."""
+        return [a.index for a in self.atoms if a.canon == a.index]
+
     def render(self, keep: Optional[Iterable[int]] = None) -> str:
-        """Return policy text containing only the kept atoms (None = all)."""
-        kept: Set[int] = set(range(len(self.atoms))) if keep is None else set(keep)
+        """Return policy text containing only the kept units (None = all).
+        `keep` holds indexes from unique_indexes."""
+        keep_set = set(self.unique_indexes) if keep is None else set(keep)
+        kept: Set[int] = {a.index for a in self.atoms if a.canon in keep_set}
         out = self.text
         for block in reversed(self._blocks):
             body = _render_block(block.type_name,

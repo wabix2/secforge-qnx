@@ -15,12 +15,14 @@ def main(argv):
     with open(argv[2], encoding="utf-8", errors="replace") as f:
         policy = Policy(f.read())
     print(f"blocks: {len({a.block for a in policy.atoms})}")
-    print(f"removable atoms: {len(policy.atoms)}")
+    print(f"atoms (with duplicates): {len(policy.atoms)}")
+    print(f"unique removable units: {len(policy.unique_indexes)}")
     for type_name, n in Counter(a.type_name for a in policy.atoms).most_common():
         print(f"  {type_name}: {n}")
     print("--- atoms ---")
     for a in policy.atoms:
-        print(f"{a.index:4d}  {a.label()}")
+        mark = "" if a.canon == a.index else f"   (duplicate of {a.canon})"
+        print(f"{a.index:4d}  {a.label()}{mark}")
     return 0
 
 

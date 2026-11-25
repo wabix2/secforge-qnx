@@ -78,5 +78,27 @@ def test_ddmin_on_atoms_finds_required():
     p = Policy(SAMPLE)
     required = {a.index for a in p.atoms
                 if a.label() in ("user_root_t fork", "console_t channel_connect:devb_t")}
-    result = ddmin([a.index for a in p.atoms], lambda idx: required.issubset(set(idx)))
+    result = ddmin(p.unique_indexes, lambda idx: required.issubset(set(idx)))
     assert set(result) == required
+
+
+DUP = """\
+allow user_root_t self:ability {
+    fork
+    channel_connect:devb_t
+};
+allow user_root_t self:ability {
+    fork
+    channel_connect:devb_t,random_t
+};
+"""
+
+
+def test_duplicates_are_one_unit():
+    p = Policy(DUP)
+    assert len(p.atoms) == 5
+    assert len(p.unique_indexes) == 3          # fork, devb_t, random_t
+    keep = [i for i in p.unique_indexes if p.atoms[i].label() != "user_root_t fork"]
+    out = p.render(keep)
+    assert "fork" not in out                   # both copies removed together
+    assert "random_t" in out
