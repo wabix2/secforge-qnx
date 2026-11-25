@@ -19,12 +19,16 @@ from typing import Dict, List
 SSH_PORT = 2222
 DEFAULT_QEMU = r"C:\Program Files\qemu\qemu-system-x86_64.exe"
 DEFAULT_KEY = os.path.expanduser(os.path.join("~", ".ssh", "id_ed25519"))
+BOOT_TIMEOUT = 120
+SSH_TIMEOUT = 150
 
 # name, command, should_succeed, text that must appear in the output
 LEGIT = [
     ("uname", "uname -a", True, "QNX"),
     ("fs_write_read", "echo secforge-probe > /data/sf_probe.txt && cat /data/sf_probe.txt", True, "secforge-probe"),
     ("ls_root", "ls /", True, "data"),
+    # needs the process-query permission: the SSH shell must be able to see other services
+    ("pidin_sees_services", "pidin ar", True, "sshd"),
 ]
 ATTACKS = [
     ("on_type_change", "on -T random_t sleep 1", False, "not permitted"),
@@ -49,7 +53,7 @@ def port_in_use(port: int) -> bool:
 def ssh_cmd(key: str, command: str) -> List[str]:
     return ["ssh", "-p", str(SSH_PORT), "-i", key,
             "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={os.devnull}",
-            "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+            "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
             "-c", "aes128-ctr", "-m", "hmac-sha2-256", "root@127.0.0.1", command]
 
 
@@ -61,18 +65,19 @@ def run_ssh(key: str, command: str, timeout: int = 30):
         return 124, "timeout"
 
 
-def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print("usage: python -m secforge.probe <image_dir>")
-        return 2
-    image_dir = os.path.abspath(argv[1])
+def probe_image(image_dir: str, key: str = DEFAULT_KEY) -> Dict:
+    """Boot the image headless, run LEGIT + ATTACKS over SSH, return a result dict.
+
+    On failure the dict has "error" and "stage" ("setup", "boot", "ssh"); it never
+    raises for boot or SSH problems, so a caller can treat them as a failed trial."""
+    image_dir = os.path.abspath(image_dir)
     qemu = DEFAULT_QEMU if os.path.exists(DEFAULT_QEMU) else shutil.which("qemu-system-x86_64")
+    result: Dict = {"image": image_dir, "all_passed": False}
     if not qemu:
-        print("qemu-system-x86_64 not found")
-        return 2
+        return {**result, "stage": "setup", "error": "qemu-system-x86_64 not found"}
     if port_in_use(SSH_PORT):
-        print(f"port {SSH_PORT} is already in use: stop the running VM first")
-        return 2
+        return {**result, "stage": "setup",
+                "error": f"port {SSH_PORT} in use: stop the running VM first"}
     out = os.path.join(image_dir, "output")
     serial = os.path.join(out, "serial.log")
     if os.path.exists(serial):
@@ -84,48 +89,51 @@ def main(argv: List[str]) -> int:
            "-object", "rng-builtin,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
            "-netdev", f"user,id=net0,hostfwd=tcp::{SSH_PORT}-:22",
            "-device", "virtio-net-pci,netdev=net0"]
-    result: Dict = {"image": image_dir}
     t0 = time.time()
     err = open(os.path.join(out, "qemu-stderr.log"), "w")
     proc = subprocess.Popen(cmd, cwd=image_dir, stdout=subprocess.DEVNULL, stderr=err,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
-        # 1. wait for the QNX banner in the serial log
-        while time.time() - t0 < 240:
+        while True:
+            if time.time() - t0 > BOOT_TIMEOUT:
+                return {**result, "stage": "boot", "error": "timeout waiting for Startup complete"}
             if proc.poll() is not None:
-                print("QEMU exited early; see output/qemu-stderr.log")
-                return 1
+                return {**result, "stage": "boot", "error": "QEMU exited early"}
             if os.path.exists(serial) and "Startup complete" in open(serial, errors="replace").read():
                 break
             time.sleep(1)
-        else:
-            print("timeout waiting for Startup complete")
-            return 1
         result["boot_seconds"] = round(time.time() - t0, 1)
-        # 2. wait until SSH answers
-        while time.time() - t0 < 360:
-            rc, _ = run_ssh(DEFAULT_KEY, "true", timeout=10)
+        while True:
+            if time.time() - t0 > SSH_TIMEOUT:
+                return {**result, "stage": "ssh", "error": "timeout waiting for SSH"}
+            rc, _ = run_ssh(key, "true", timeout=10)
             if rc == 0:
                 break
             time.sleep(2)
-        else:
-            print("timeout waiting for SSH")
-            return 1
         result["ssh_seconds"] = round(time.time() - t0, 1)
-        # 3. run the checks
         checks = []
         for name, command, should_succeed, needle in LEGIT + ATTACKS:
-            rc, text = run_ssh(DEFAULT_KEY, command)
+            rc, text = run_ssh(key, command)
             checks.append(evaluate(name, should_succeed, needle, rc, text))
         result["checks"] = checks
         result["all_passed"] = all(c["passed"] for c in checks)
+        result["stage"] = "checks"
+        return result
     finally:
         proc.terminate()
         try:
             proc.wait(10)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(10)
         err.close()
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) != 2:
+        print("usage: python -m secforge.probe <image_dir>")
+        return 2
+    result = probe_image(argv[1])
     print(json.dumps(result, indent=2))
     return 0 if result.get("all_passed") else 1
 
