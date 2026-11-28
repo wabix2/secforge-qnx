@@ -17,10 +17,11 @@ import time
 from typing import Dict, List
 
 SSH_PORT = 2222
+SERIAL_PORT = 5555
 DEFAULT_QEMU = r"C:\Program Files\qemu\qemu-system-x86_64.exe"
 DEFAULT_KEY = os.path.expanduser(os.path.join("~", ".ssh", "id_ed25519"))
-BOOT_TIMEOUT = 120
-SSH_TIMEOUT = 150
+BOOT_TIMEOUT = 60
+SSH_TIMEOUT = 75
 
 # name, command, should_succeed, text that must appear in the output
 LEGIT = [
@@ -65,6 +66,42 @@ def run_ssh(key: str, command: str, timeout: int = 30):
         return 124, "timeout"
 
 
+CONSOLE_MARKER = "SFCON42"
+
+
+def console_check(timeout: int = 20) -> Dict:
+    """Type a command that must start a NEW process at the serial console.
+
+    The console shell runs as security type console_t, so this exercises that
+    type's spawn/fork permissions, which the SSH checks never touch. The echo
+    is an external program (/proc/boot/echo) on purpose: a shell builtin would
+    not need spawn or fork. The typed text contains '$((20+22))', so only a real
+    execution prints the marker SFCON42."""
+    try:
+        sock = socket.create_connection(("127.0.0.1", SERIAL_PORT), timeout=5)
+    except OSError as e:
+        return evaluate("console_spawn", True, CONSOLE_MARKER, 1, f"cannot connect to serial: {e}")
+    data = b""
+    try:
+        sock.settimeout(1)
+        sock.sendall(b"\r")
+        time.sleep(0.5)
+        sock.sendall(b"/proc/boot/echo SFCON$((20+22))\r")
+        end = time.time() + timeout
+        while time.time() < end and CONSOLE_MARKER.encode() not in data:
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                continue
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        sock.close()
+    text = data.decode(errors="replace")
+    return evaluate("console_spawn", True, CONSOLE_MARKER, 0 if CONSOLE_MARKER in text else 1, text)
+
+
 def probe_image(image_dir: str, key: str = DEFAULT_KEY) -> Dict:
     """Boot the image headless, run LEGIT + ATTACKS over SSH, return a result dict.
 
@@ -85,7 +122,9 @@ def probe_image(image_dir: str, key: str = DEFAULT_KEY) -> Dict:
     cmd = [qemu, "-smp", "2", "-cpu", "max", "-m", "1G",
            "-drive", "file=output/disk-qemu.vmdk,if=ide,id=drv0",
            "-kernel", "output/ifs.bin", "-display", "none",
-           "-serial", "file:output/serial.log", "-monitor", "none",
+           "-chardev", f"socket,id=ser0,host=127.0.0.1,port={SERIAL_PORT},server=on,wait=off,"
+                       "logfile=output/serial.log",
+           "-serial", "chardev:ser0", "-monitor", "none",
            "-object", "rng-builtin,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
            "-netdev", f"user,id=net0,hostfwd=tcp::{SSH_PORT}-:22",
            "-device", "virtio-net-pci,netdev=net0"]
@@ -115,6 +154,7 @@ def probe_image(image_dir: str, key: str = DEFAULT_KEY) -> Dict:
         for name, command, should_succeed, needle in LEGIT + ATTACKS:
             rc, text = run_ssh(key, command)
             checks.append(evaluate(name, should_succeed, needle, rc, text))
+        checks.append(console_check())
         result["checks"] = checks
         result["all_passed"] = all(c["passed"] for c in checks)
         result["stage"] = "checks"

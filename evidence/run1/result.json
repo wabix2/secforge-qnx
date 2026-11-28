@@ -1,0 +1,37 @@
+{
+  "candidates": 28,
+  "removed": [
+    "console_t mac_policy",
+    "console_t able_create",
+    "console_t spawn",
+    "console_t fork",
+    "console_t xprocess_query:20-22,24-25,29-30,33-34,37-38,43-44,47-48",
+    "user_root_t xprocess_query:20-22,24-25,29-30,33-34,37-38,43-44,47-48",
+    "io_sock_t able_create",
+    "qconn_t xprocess_debug:29",
+    "qconn_t xprocess_mem_read:29",
+    "qconn_t network/jailroot",
+    "io_usb_t xprocess_mem_read:33",
+    "io_usb_t xprocess_query:44",
+    "pci_server_t xprocess_query:34",
+    "dhcpcd_t spawn",
+    "dhcpcd_t fork",
+    "dumper_t dumper",
+    "mqueue_t confset:19-20,32"
+  ],
+  "kept_candidates": [
+    "pci_server_t mem_peer:33",
+    "dhcpcd_t network/privport",
+    "dhcpcd_t network/rawsocket",
+    "dhcpcd_t network/admin",
+    "dhcpcd_t network/jailroot",
+    "sshd_t network/privport",
+    "sshd_t network/jailroot",
+    "sshd_t chroot:0",
+    "sshd_t gain_priv:setuid,setgid,channel_connect",
+    "sshd_t settypeid:user_root_t",
+    "user_root_t network/jailroot"
+  ],
+  "trials_run_this_session": 59,
+  "seconds_this_session": 7735.2
+}
